@@ -5,6 +5,7 @@
  Web software update service included
  WifiManager can be used to config wifi network
 */
+#define ESP8266
 
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
