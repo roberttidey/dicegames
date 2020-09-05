@@ -6,37 +6,15 @@
  WifiManager can be used to config wifi network
 */
 #define ESP8266
-
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266HTTPUpdateServer.h>
-#include <ArduinoJson.h>
-#include <DNSServer.h>
-#include <WiFiManager.h>
+#include "BaseConfig.h"
 #include "diceDriver.h"
 
-/*
-Wifi Manager Web set up
-If WM_NAME defined then use WebManager
-*/
-#define WM_NAME "DiceGamesWebSetup"
-#define WM_PASSWORD "password"
-#ifdef WM_NAME
-	WiFiManager wifiManager;
-#endif
-//uncomment to use a static IP
-//#define WM_STATIC_IP 192,168,0,100
-//#define WM_STATIC_GATEWAY 192,168,0,1
-
-int timeInterval = 50;
-#define WIFI_CHECK_TIMEOUT 30000
+int timeInterval = 25;
 #define ROLL_TIME_INTERVAL 1000
 unsigned long elapsedTime;
-unsigned long wifiCheckTime;
 unsigned long lastRollTime;
 
+int bootNormal;
 int dRollMask = 31;
 int dRollTime = 5000;
 int dRollInterval = 150;
@@ -66,107 +44,9 @@ int gameVariableMasks[DICE_MAXNUMBER] = {31,30,28,24,16};
 int gameRiskMasks[DICE_MAXNUMBER] = {7,6,4,8,24};
 int gameRiskAttackCount;
 
-//For update service
-String host = "esp8266-hall";
-const char* update_path = "/firmware";
-const char* update_username = "admin";
-const char* update_password = "password";
-
-//AP definitions for static set up
-#define AP_SSID "ssid"
-#define AP_PASSWORD "password"
-#define AP_MAX_WAIT 10
-String macAddr;
-
-#define AP_PORT 80
-
-ESP8266WebServer server(AP_PORT);
-ESP8266HTTPUpdateServer httpUpdater;
-WiFiClient cClient;
-WiFiClientSecure sClient;
-
-void ICACHE_RAM_ATTR  delaymSec(unsigned long mSec) {
-	unsigned long ms = mSec;
-	while(ms > 100) {
-		delay(100);
-		ms -= 100;
-		ESP.wdtFeed();
-	}
-	delay(ms);
-	ESP.wdtFeed();
-	yield();
-}
-
-void ICACHE_RAM_ATTR  delayuSec(unsigned long uSec) {
-	unsigned long us = uSec;
-	while(us > 100000) {
-		delay(100);
-		us -= 100000;
-		ESP.wdtFeed();
-	}
-	delayMicroseconds(us);
-	ESP.wdtFeed();
-	yield();
-}
-
-/*
-  Connect to local wifi with retries
-  If check is set then test the connection and re-establish if timed out
-*/
-int wifiConnect(int check) {
-	if(check) {
-		if(WiFi.status() != WL_CONNECTED) {
-			if((elapsedTime - wifiCheckTime) * timeInterval > WIFI_CHECK_TIMEOUT) {
-				Serial.println("Wifi connection timed out. Try to relink");
-			} else {
-				return 1;
-			}
-		} else {
-			wifiCheckTime = elapsedTime;
-			return 0;
-		}
-	}
-	wifiCheckTime = elapsedTime;
-#ifdef WM_NAME
-	Serial.println("Set up managed Web");
-#ifdef WM_STATIC_IP
-	wifiManager.setSTAStaticIPConfig(IPAddress(WM_STATIC_IP), IPAddress(WM_STATIC_GATEWAY), IPAddress(255,255,255,0));
-#endif
-	if(check == 0) {
-		wifiManager.setConfigPortalTimeout(180);
-		if(!wifiManager.autoConnect(WM_NAME, WM_PASSWORD)) WiFi.mode(WIFI_STA);
-	} else {
-		WiFi.begin();
-	}
-#else
-	Serial.println("Set up manual Web");
-	int retries = 0;
-	Serial.print("Connecting to AP");
-	#ifdef AP_IP
-		IPAddress addr1(AP_IP);
-		IPAddress addr2(AP_DNS);
-		IPAddress addr3(AP_GATEWAY);
-		IPAddress addr4(AP_SUBNET);
-		WiFi.config(addr1, addr2, addr3, addr4);
-	#endif
-	WiFi.begin(AP_SSID, AP_PASSWORD);
-	while (WiFi.status() != WL_CONNECTED && retries < AP_MAX_WAIT) {
-		delaymSec(1000);
-		Serial.print(".");
-		retries++;
-	}
-	Serial.println("");
-	if(retries < AP_MAX_WAIT) {
-		Serial.print("WiFi connected ip ");
-		Serial.print(WiFi.localIP());
-		Serial.printf(":%d mac %s\r\n", AP_PORT, WiFi.macAddress().c_str());
-		return 1;
-	} else {
-		Serial.println("WiFi connection attempt failed"); 
-		return 0;
-	} 
-#endif
-}
+//handle server in loop once per second
+#define SERVER_INTERVAL 1000
+int serverCheck = 0;
 
 /*
   Set dicePower from web
@@ -212,13 +92,26 @@ void webSetRollParameters() {
   Get dice status to web
 */
 void webGetDiceStatus() {
-	String status = "Dice values ";
+	String status = "Dice index,value,power,flash,debug";
 	int d;
 	for(d=0; d < DICE_MAXNUMBER; d++) {
-		status += String(diceDriver_getValue(d)) + " ";
+		status += "<BR>" + String(d) + "," + String(diceDriver_getValue(d)) + "," + String(diceDriver_getPower(d)) + "," + String(diceDriver_getFlash(d)) + "," + String(diceDriver_getDebugInt(d));
 	}
-	status += "<BR> gameMode gameSet 16Release RisingSwitches " + String(gameMode) + " " + String(gameSet) + " " + String(pin16Release) + " " + String(lastDiceRisingEdges);
+	status += "<BR>gameMode:" + String(gameMode);
+	status += "<BR>gameSet:" + String(gameSet);
+	status += "<BR>16Release:" + String(pin16Release);
+	status += "<BR>RisingSwitches:" + String(lastDiceRisingEdges);
 	server.send(200, "text/html", status);
+}
+
+/*
+  set test
+*/
+void webTest() {
+	int dice = server.arg("dice").toInt();
+	int value = server.arg("value").toInt();
+	diceDriver_test(dice, value);
+	server.send(200, "text/html", "set test dice:" + String(dice) + " val:" + String(value));
 }
 
 /*
@@ -437,47 +330,50 @@ void doGameSet() {
 /*
   Set up basic wifi, collect config from flash/server, initiate update server
 */
-void setup() {
-	Serial.begin(115200);
-	Serial.printf("\r\nChipId %6X\r\n",ESP.getFlashChipId());
-	Serial.printf("ChipSize %d\r\n",ESP.getFlashChipRealSize());
-	Serial.println("Set up Web update service");
-	wifiConnect(0);
-	macAddr = WiFi.macAddress();
-	macAddr.replace(":","");
-	Serial.println(macAddr);
+void setupStart() {
+}
 
-	//Update service
-	MDNS.begin(host.c_str());
-	httpUpdater.setup(&server, update_path, update_username, update_password);
+void extraHandlers() {
 	server.on("/setpower", webSetDicePower);
 	server.on("/setflash", webSetDiceFlash);
 	server.on("/setdice", webSetDiceValue);
 	server.on("/parameters", webSetRollParameters);
 	server.on("/status", webGetDiceStatus);
-	server.begin();
-	
-	pinMode(16, INPUT_PULLDOWN_16);
+	server.on("/test", webTest);
+}
 
-	MDNS.addService("http", "tcp", 80);
-	Serial.println("Set up complete");
-	diceDriver_init(1);
-	showGameMode();
+void setupEnd() {
+	pinMode(16, INPUT_PULLDOWN_16);
+	bootNormal = digitalRead(16) ? 0 : 1;
+	if(bootNormal) {
+		diceDriver_init(1);
+		showGameMode();
+	} else {
+		Serial.println("Simple boot no game");
+	}
 }
 
 /*
   Main loop
 */
 void loop() {
-	delaymSec(timeInterval);
+	delay(timeInterval);
 	elapsedTime++;
+	serverCheck += timeInterval;
+	if(serverCheck >= SERVER_INTERVAL) {
+		server.handleClient();
+		serverCheck = 0;
+		wifiConnect(1);
+	}
 	server.handleClient();
 	check_pin16();
-	if(gameSet == 0) {
-		updateDiceSwitches();
-		runGame();
-		rollStatus = diceDriver_rollProcess();
-	} else {
-		doGameSet();
+	if(bootNormal) {
+		if(gameSet == 0) {
+			updateDiceSwitches();
+			runGame();
+			rollStatus = diceDriver_rollProcess();
+		} else {
+			doGameSet();
+		}
 	}
 }

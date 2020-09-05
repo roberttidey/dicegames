@@ -12,6 +12,7 @@
 #define LED_PINS 3,0,4,15
 //digits
 #define LEDS_OFF 0x8019
+#define LEDS_ZERO 0x0000
 #define LEDS_ONE 0x0008
 #define LEDS_TWO 0x0010
 #define LEDS_THREE 0x8008
@@ -22,6 +23,7 @@
 //lines used to select a die
 //RED,YELLOW,WHITE,GREEN,BLUE
 #define DICE_MUXPINS 5,14,12,13,2
+#define DICE_MUXGPF 0x840,0x80C,0x804,0x808,0x838
 #define DICE_NONE 0x7024
 #define DICE_ONE 0x0020
 #define DICE_TWO 0x4000
@@ -34,8 +36,8 @@
 
 //power calibration ticks per die
 #define DICE_POWER 200,200,150,120,150
-#define DICE_MINPOWER 30
-#define DICE_MAXPOWER 290
+#define DICE_MINPOWER 35
+#define DICE_MAXPOWER 305
 
 extern void diceDriver_init(int esTimer);
 extern void diceDriver_setDiceCount(int count);
@@ -45,6 +47,10 @@ extern void diceDriver_setFlash(int flashMask, int flashTime);
 extern void diceDriver_rollStart(int rollMask, int rollTime, int rollInterval);
 extern void diceDriver_rollBreak();
 extern int diceDriver_getValue(int dice);
+extern int diceDriver_getPower(int dice);
+extern int diceDriver_getFlash(int dice);
+extern int diceDriver_getDebugInt(int index);
 extern int diceDriver_rollProcess();
 extern int diceDriver_readSwitches();
 extern int diceDriver_getDefaultPower(int dice);
+extern void diceDriver_test(int dice, int value);
